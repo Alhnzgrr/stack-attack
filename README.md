@@ -2,6 +2,9 @@
 
 A portrait, one-thumb arcade shooter built in **Unity 6 (URP 2D)** as a test case for **OmicronGames**.
 
+Built with Claude Code under a project-local rule-and-hook system committed at [`.claude/`](.claude) —
+see [How This Was Built](#how-this-was-built).
+
 You drag your thumb to steer, hold to fire, and break stacked plates before they scroll down into you.
 Breaking plates earns points, points buy upgrades mid-run, and each level ends with a boss that holds
 its ground and throws stacks at you while a ring of guards spins around it.
@@ -258,6 +261,48 @@ To play without opening the project, grab the APK from the
 | Async | UniTask |
 | Input | Input System 1.14.2 |
 | UI | uGUI + TextMeshPro |
+
+---
+
+## How This Was Built
+
+This project was written with **Claude Code**, driven by a project-local workflow I built to keep the AI
+inside an architecture I chose rather than one it drifts into. The whole setup is committed under
+[`.claude/`](.claude) — it is part of the repository, not something that happened off-screen.
+
+It has three layers.
+
+**Rules.** Six files under [`.claude/rules/`](.claude/rules) fix the decisions up front: VContainer for
+composition, UniTask with lifetime-bound cancellation for async, a ScriptableObject for every tunable
+value, plain C# services behind thin MonoBehaviours, and no defensive null-fallback on dependencies that
+are guaranteed by construction. These are the same conventions listed at the bottom of this README — the
+model reads them as constraints, a human reads them as documentation.
+
+**Hooks that actually block.** A rule in a prompt is advice. These are enforcement: four PowerShell
+hooks in [`.claude/hooks/`](.claude/hooks) run on every `Write` and `Edit` and exit non-zero to refuse
+the edit outright.
+
+| Hook | Refuses |
+| --- | --- |
+| `block-coroutine.ps1` | Coroutines — async goes through UniTask or not at all |
+| `block-singleton.ps1` | Singletons and service locators — composition belongs in `GameScope` |
+| `block-region.ps1` | `#region` — a file that needs folding needs splitting instead |
+| `block-scene-prefab-asset-edit.ps1` | Direct text edits to `.unity`, `.prefab` and `.asset` files |
+
+The last one matters most. Unity's serialized files are not safe to hand-edit, so the AI was never
+allowed near them: **every scene, prefab and ScriptableObject in this project was wired by hand in the
+Unity Editor.** The model wrote C# and nothing else.
+
+**A separate reviewer.** [`code-reviewer`](.claude/agents/code-reviewer.md) is a second agent with
+read-only tools that audits changes against the rules before a commit — lifecycle hazards, silent
+failures, `GetComponent` in a hot path, fat MonoBehaviours that should delegate. Implementation and
+review never share a context, because the model that just wrote the code is the worst available judge
+of it.
+
+The constraints are the point. Generating C# stopped being the hard part some time ago; deciding what
+the code is *not* allowed to do is where the engineering moved. The same system, generalised and
+installable, is published separately as the
+[Unity AI Workflow Kit](https://github.com/Alhnzgrr/unity-ai-workflow-kit).
 
 ---
 
